@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2017 NXP
+# Copyright 2017-2018 NXP
 
 ########################################################
 # establish build environment and build options value
@@ -22,7 +22,6 @@ fi
 if ! [ -d $KERNEL_DIR ]
 then
 	echo "Invalid Linux Kernel folder"
-	echo "KERNEL_DIR=$KERNEL_DIR"
 	exit 1
 fi
 
@@ -39,8 +38,7 @@ else
 	then
 		echo "Please set TOOLCHAIN variable. It should point to your toolchain folder."
 		echo "e.g. export TOOLCHAIN=/space/toolchains/gcc-linaro-4.9-2014.11-x86_64_aarch64-linux-gnu/"
-		exit 1
-		export CROSS_COMPILE="${CROSS_COMPILE:-$TOOLCHAIN/bin/aarch64-linux-gnu-}"
+		export CROSS_COMPILE="${CROSS_COMPILE:-${CROSS_COMPILE-${TARGET_PREFIX}}}"
 	fi
 fi
 
@@ -59,19 +57,6 @@ export SOC_PLATFORM="${SOC_PLATFORM:-freescale-s32v234}"
 ########################################################
 # build results will save to $SDK_DIR/
 ########################################################
-
-if [ "clean" == "$1" ]; then
-	# do extra cleaning
-	rm ./hal/os/linux/kernel/gc_hal_kernel_iommu.o || true
-	rm ./galcore.o || true
-	rm ./.galcore.o.cmd || true
-	rm ./galcore.mod.c || true
-	rm ./.galcore.mod.o.cmd || true
-	rm ./galcore.mod.o || true
-	rm ./galcore.ko || true
-	rm ./.galcore.ko.cmd || true
-	rm -rf ./build || true
-fi
 
 if [ "clean" == "$1" ]; then
 	make --makefile=Kbuild clean -C $DIR

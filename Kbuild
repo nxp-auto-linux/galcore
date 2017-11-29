@@ -165,6 +165,16 @@ clean:
 	@rm -rf $(OBJS)
 	@rm -rf modules.order Module.symvers .tmp_versions
 	@find $(AQROOT) -name ".gc_*.cmd" | xargs rm -f
+	@rm -f ./hal/os/linux/kernel/gc_hal_kernel_iommu.o
+	@rm -f ./galcore.o
+	@rm -f ./.galcore.o.cmd
+	@rm -f ./galcore.mod.c
+	@rm -f ./.galcore.mod.o.cmd
+	@rm -f ./galcore.mod.o
+	@rm -f ./galcore.ko
+	@rm -f ./.galcore.ko.cmd
+	@rm -rf ./build
+
 
 install: all
 	@mkdir -p $(SDK_DIR)/drivers
