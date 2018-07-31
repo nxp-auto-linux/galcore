@@ -2,7 +2,7 @@
 #
 #    The MIT License (MIT)
 #
-#    Copyright (c) 2014 - 2017 Vivante Corporation
+#    Copyright (c) 2014 - 2018 Vivante Corporation
 #
 #    Permission is hereby granted, free of charge, to any person obtaining a
 #    copy of this software and associated documentation files (the "Software"),
@@ -26,7 +26,7 @@
 #
 #    The GPL License (GPL)
 #
-#    Copyright (C) 2014 - 2017 Vivante Corporation
+#    Copyright (C) 2014 - 2018 Vivante Corporation
 #
 #    This program is free software; you can redistribute it and/or
 #    modify it under the terms of the GNU General Public License
@@ -88,6 +88,8 @@ OBJS := $(OS_KERNEL_DIR)/gc_hal_kernel_device.o \
         $(OS_KERNEL_DIR)/gc_hal_kernel_allocator.o \
         $(OS_KERNEL_DIR)/allocator/default/gc_hal_kernel_allocator_user_memory.o \
         $(OS_KERNEL_DIR)/allocator/default/gc_hal_kernel_allocator_dma.o \
+        $(OS_KERNEL_DIR)/allocator/default/gc_hal_kernel_allocator_gfp.o \
+        $(OS_KERNEL_DIR)/allocator/default/gc_hal_kernel_allocator_reserved_mem.o \
         $(OS_KERNEL_DIR)/gc_hal_kernel_driver.o \
         $(OS_KERNEL_DIR)/platform/$(soc_vendor)/gc_hal_kernel_platform_$(soc_board).o
 
@@ -97,6 +99,10 @@ endif
 
 ifneq ($(CONFIG_IOMMU_SUPPORT),)
 OBJS += $(OS_KERNEL_DIR)/gc_hal_kernel_iommu.o
+endif
+
+ifneq ($(CONFIG_DRM),)
+OBJS += $(OS_KERNEL_DIR)/gc_hal_kernel_drm.o
 endif
 
 OBJS += $(HAL_KERNEL_DIR)/gc_hal_kernel.o \
@@ -116,6 +122,12 @@ OBJS += $(ARCH_KERNEL_DIR)/gc_hal_kernel_context.o \
 
 ifeq ($(VIVANTE_ENABLE_3D), 1)
 OBJS += $(ARCH_KERNEL_DIR)/gc_hal_kernel_recorder.o
+endif
+
+ifneq ($(CONFIG_ARM64),)
+ifeq ($(CONFIG_ANDROID),)
+VIVANTE_ENABLE_VG=0
+endif
 endif
 
 ifeq ($(VIVANTE_ENABLE_VG), 1)
@@ -165,16 +177,6 @@ clean:
 	@rm -rf $(OBJS)
 	@rm -rf modules.order Module.symvers .tmp_versions
 	@find $(AQROOT) -name ".gc_*.cmd" | xargs rm -f
-	@rm -f ./hal/os/linux/kernel/gc_hal_kernel_iommu.o
-	@rm -f ./galcore.o
-	@rm -f ./.galcore.o.cmd
-	@rm -f ./galcore.mod.c
-	@rm -f ./.galcore.mod.o.cmd
-	@rm -f ./galcore.mod.o
-	@rm -f ./galcore.ko
-	@rm -f ./.galcore.ko.cmd
-	@rm -rf ./build
-
 
 install: all
 	@mkdir -p $(SDK_DIR)/drivers
@@ -222,6 +224,12 @@ ifeq ($(USE_NEW_LINUX_SIGNAL), 1)
 EXTRA_CFLAGS += -DUSE_NEW_LINUX_SIGNAL=1
 else
 EXTRA_CFLAGS += -DUSE_NEW_LINUX_SIGNAL=0
+endif
+
+ifeq ($(USE_LINUX_PCIE), 1)
+EXTRA_CFLAGS += -DUSE_LINUX_PCIE=1
+else
+EXTRA_CFLAGS += -DUSE_LINUX_PCIE=0
 endif
 
 ifeq ($(FORCE_ALL_VIDEO_MEMORY_CACHED), 1)
@@ -280,7 +288,7 @@ ifeq ($(USE_BANK_ALIGNMENT), 1)
     endif
 endif
 
-ifeq ($(gcdFPGA_BUILD), 1)
+ifeq ($(FPGA_BUILD), 1)
 EXTRA_CFLAGS += -DgcdFPGA_BUILD=1
 else
 EXTRA_CFLAGS += -DgcdFPGA_BUILD=0
@@ -288,6 +296,20 @@ endif
 
 ifeq ($(SECURITY), 1)
 EXTRA_CFLAGS += -DgcdSECURITY=1
+endif
+
+ifneq ($(CONFIG_DRM), )
+    ifneq ($(CONFIG_ANDROID),)
+    EXTRA_CFLAGS += -DgcdENABLE_DRM=$(VIVANTE_ENABLE_DRM)
+    else
+    EXTRA_CFLAGS += -DgcdENABLE_DRM=0
+    endif
+else
+EXTRA_CFLAGS += -DgcdENABLE_DRM=0
+endif
+
+ifeq ($(ANDROID_NATIVE_FENCE_SYNC), 1)
+EXTRA_CFLAGS += -DgcdANDROID_NATIVE_FENCE_SYNC=1
 endif
 
 EXTRA_CFLAGS += -I$(AQROOT)/hal/kernel/inc
