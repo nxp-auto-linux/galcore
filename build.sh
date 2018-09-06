@@ -34,7 +34,7 @@ fi
 if [ -z $CROSS_COMPILE ]; then
 	echo "Please set the CROSS_COMPILE environment variable."
 	echo "e.g. export CROSS_COMPILE=/space/workspaces/gcc-linaro-6.3.1-2017.05-x86_64_aarch64-linux-gnu/bin/aarch64-linux-gnu-"
-	exit
+	echo "No CROSS_COMPILE detected, using system default."
 fi
 
 export ARCH="${ARCH:-arm64}"
