@@ -226,6 +226,7 @@ struct _gckHARDWARE
     gctSIZE_T                   mmuFuncBytes;
 
     gctPHYS_ADDR                auxFuncPhysical;
+    gctPHYS_ADDR                auxPhysHandle;
     gctPOINTER                  auxFuncLogical;
     gctUINT32                   auxFuncAddress;
     gctSIZE_T                   auxFuncBytes;
@@ -353,6 +354,11 @@ gckHARDWARE_ExitQueryClock(
     IN gctUINT64 ShStart,
     OUT gctUINT32 *McClk,
     OUT gctUINT32 *ShClk
+    );
+
+gceSTATUS
+gckHARDWARE_QueryFrequency(
+    IN gckHARDWARE Hardware
     );
 
 #define gcmkWRITE_MEMORY(logical, data) \

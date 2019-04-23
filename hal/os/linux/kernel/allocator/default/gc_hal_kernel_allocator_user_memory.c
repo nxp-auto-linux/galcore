@@ -201,21 +201,6 @@ static int import_page_map(struct um_desc *um,
         goto error;
     }
 
-    if (addr & ~PAGE_MASK)
-    {
-        dma_sync_single_for_device(galcore_device,
-                                   page_to_phys(pages[0]),
-                                   PAGE_SIZE,
-                                   DMA_TO_DEVICE);
-    }
-    if (page_count > 1 && ((addr + size) & ~PAGE_MASK))
-    {
-        dma_sync_single_for_device(galcore_device,
-                                   page_to_phys(pages[page_count-1]),
-                                   PAGE_SIZE,
-                                   DMA_TO_DEVICE);
-    }
-
     um->type = UM_PAGE_MAP;
     um->pages = pages;
 
@@ -229,9 +214,9 @@ error:
     kfree(um->sgt.sgl);
 #endif
 
-    if (um->pages)
+    if (pages)
     {
-        kfree(um->pages);
+        kfree(pages);
     }
     return result;
 }
@@ -405,6 +390,12 @@ _Import(
             get_user(data, (u32 *)vaddr);
             put_user(data, (u32 *)vaddr);
             vaddr += PAGE_SIZE;
+
+            /* Fix QM crash with test_buffers */
+            if (vaddr > memory + Size - 4)
+            {
+                vaddr = memory + Size - 4;
+            }
         }
 
         vma = find_vma(current->mm, memory);
@@ -470,6 +461,47 @@ _Import(
     else if (result < 0)
     {
         gcmkONERROR(gcvSTATUS_OUT_OF_RESOURCES);
+    }
+
+    if(Os->device->platform->flagBits & gcvPLATFORM_FLAG_LIMIT_4G_ADDRESS )
+    {
+        gctPHYS_ADDR_T addr;
+
+        if (Physical != gcvINVALID_PHYSICAL_ADDRESS)
+        {
+            if(Physical >0xFFFFFFFFu || Physical + Size > 0xFFFFFFFFu )
+            {
+                gcmkONERROR(gcvSTATUS_INVALID_ARGUMENT);
+            }
+        }
+        else if (vm_flags & VM_PFNMAP)
+        {
+            for(i = 0; i < pageCount; i++)
+            {
+                addr =  UserMemory->pfns[i] << PAGE_SHIFT;
+                if( addr > 0xFFFFFFFFu)
+                {
+                    kfree(UserMemory->pfns);
+                    UserMemory->pfns = gcvNULL;
+                    kfree(UserMemory->refs) ;
+                    UserMemory->refs = gcvNULL;
+                    gcmkONERROR(gcvSTATUS_INVALID_ARGUMENT);
+                }
+            }
+        }
+        else
+        {
+            for (i = 0; i< pageCount; i++)
+            {
+                addr = page_to_phys(UserMemory->pages[i]);
+                if(addr > 0xFFFFFFFFu )
+                {
+                    kfree(UserMemory->pages);
+                    UserMemory->pages = gcvNULL;
+                    gcmkONERROR(gcvSTATUS_INVALID_ARGUMENT);
+                }
+            }
+        }
     }
 
     UserMemory->vm_flags = vm_flags;
@@ -677,8 +709,8 @@ static gceSTATUS
 _UserMemoryCache(
     IN gckALLOCATOR Allocator,
     IN PLINUX_MDL Mdl,
+    IN gctSIZE_T Offset,
     IN gctPOINTER Logical,
-    IN gctUINT32 Physical,
     IN gctUINT32 Bytes,
     IN gceCACHEOPERATION Operation
     )
@@ -705,8 +737,10 @@ _UserMemoryCache(
         dma_sync_sg_for_device(galcore_device, um->sgt.sgl, um->sgt.nents, dir);
         break;
     case gcvCACHE_FLUSH:
-        dir = DMA_BIDIRECTIONAL;
+        dir = DMA_TO_DEVICE;
         dma_sync_sg_for_device(galcore_device, um->sgt.sgl, um->sgt.nents, dir);
+        dir = DMA_FROM_DEVICE;
+        dma_sync_sg_for_cpu(galcore_device, um->sgt.sgl, um->sgt.nents, dir);
         break;
     case gcvCACHE_INVALIDATE:
         dir = DMA_FROM_DEVICE;

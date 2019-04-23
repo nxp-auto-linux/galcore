@@ -357,6 +357,15 @@ MODULE_DEVICE_TABLE(of, mxs_gpu_dt_ids);
 #endif
 
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0) && LINUX_VERSION_CODE < KERNEL_VERSION(4,9,0)
+struct contiguous_mem_pool {
+    struct dma_attrs attrs;
+    dma_addr_t phys;
+    void *virt;
+    size_t size;
+};
+#endif
+
 struct imx_priv {
     /* Clock management.*/
     struct clk         *clk_3d_core;
@@ -371,6 +380,9 @@ struct imx_priv {
        /*Run time pm*/
        struct device           *pmdev;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,9,0)
+    struct contiguous_mem_pool *pool;
+#endif
     struct reset_control *rstc[gcdMAX_GPU_COUNT];
 #endif
 };
@@ -463,7 +475,7 @@ _AdjustParam(
     Args->gpu3DMinClock = initgpu3DMinClock;
 
     if(Args->physSize == 0)
-	    Args->physSize = 0x40000000;
+        Args->physSize = 0x40000000;
 
     return gcvSTATUS_OK;
 }

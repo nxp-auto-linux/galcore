@@ -79,11 +79,17 @@ struct _LINUX_MDL
 
     atomic_t                refs;
 
+    /* Kernel address. */
     char *                  addr;
 
+    /* Size and covered page count. */
+    size_t                  bytes;
     gctINT                  numPages;
+
     gctBOOL                 contiguous;
     dma_addr_t              dmaHandle;
+
+    gctBOOL                 cacheable;
 
     struct mutex            mapsMutex;
     struct list_head        mapsHead;

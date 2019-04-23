@@ -142,10 +142,12 @@ endif
 
 ifneq ($(CONFIG_SYNC),)
 EXTRA_CFLAGS += -Idrivers/staging/android
+EXTRA_CFLAGS += -DgcdLINUX_SYNC_FILE=1
 
 OBJS += $(OS_KERNEL_DIR)/gc_hal_kernel_sync.o
 else
   ifneq ($(CONFIG_SYNC_FILE),)
+  EXTRA_CFLAGS += -DgcdLINUX_SYNC_FILE=1
   OBJS += $(OS_KERNEL_DIR)/gc_hal_kernel_sync.o
   endif
 endif
@@ -238,18 +240,6 @@ else
 EXTRA_CFLAGS += -DgcdPAGED_MEMORY_CACHEABLE=0
 endif
 
-ifeq ($(NONPAGED_MEMORY_CACHEABLE), 1)
-EXTRA_CFLAGS += -DgcdNONPAGED_MEMORY_CACHEABLE=1
-else
-EXTRA_CFLAGS += -DgcdNONPAGED_MEMORY_CACHEABLE=0
-endif
-
-ifeq ($(NONPAGED_MEMORY_BUFFERABLE), 1)
-EXTRA_CFLAGS += -DgcdNONPAGED_MEMORY_BUFFERABLE=1
-else
-EXTRA_CFLAGS += -DgcdNONPAGED_MEMORY_BUFFERABLE=0
-endif
-
 ifeq ($(CACHE_FUNCTION_UNIMPLEMENTED), 1)
 EXTRA_CFLAGS += -DgcdCACHE_FUNCTION_UNIMPLEMENTED=1
 else
@@ -308,10 +298,6 @@ else
 EXTRA_CFLAGS += -DgcdENABLE_DRM=0
 endif
 
-ifeq ($(ANDROID_NATIVE_FENCE_SYNC), 1)
-EXTRA_CFLAGS += -DgcdANDROID_NATIVE_FENCE_SYNC=1
-endif
-
 EXTRA_CFLAGS += -I$(AQROOT)/hal/kernel/inc
 EXTRA_CFLAGS += -I$(AQROOT)/hal/kernel
 EXTRA_CFLAGS += -I$(AQROOT)/hal/kernel/arch
@@ -326,6 +312,10 @@ endif
 
 ifeq ($(VIVANTE_ENABLE_VG), 1)
 EXTRA_CFLAGS += -I$(AQROOT)/hal/kernel/archvg
+endif
+
+ifeq ($(VIVANTE_ENABLE_DRM), 1)
+EXTRA_CFLAGS += -I$(AQROOT)/driver/X/libdrm-2.4.66/include/drm
 endif
 
 EXTRA_CFLAGS += -DHOST=\"$(HOST)\"

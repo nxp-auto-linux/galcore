@@ -56,7 +56,7 @@
 #include <gc_hal.h>
 #include <gc_hal_base.h>
 
-#if gcdANDROID_NATIVE_FENCE_SYNC
+#if gcdLINUX_SYNC_FILE
 
 #include <linux/kernel.h>
 #include <linux/file.h>
@@ -70,7 +70,7 @@
 #include "gc_hal_kernel_sync.h"
 #include "gc_hal_kernel_linux.h"
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4,9,0)
+#ifndef CONFIG_SYNC_FILE
 
 static struct sync_pt * viv_sync_pt_dup(struct sync_pt *sync_pt)
 {
@@ -224,7 +224,7 @@ struct sync_pt * viv_sync_pt_create(struct viv_sync_timeline *obj,
     return (struct sync_pt *)pt;
 }
 
-#else /* v4.9.0 */
+#else
 
 struct viv_sync_timeline * viv_sync_timeline_create(const char *name, gckOS Os)
 {
@@ -236,7 +236,7 @@ struct viv_sync_timeline * viv_sync_timeline_create(const char *name, gckOS Os)
     if (!timeline)
         return NULL;
 
-    strncpy(timeline->name, name, sizeof(timeline->name));
+    strncpy(timeline->name, name, sizeof(timeline->name) - 1);
     timeline->context = dma_fence_context_alloc(1);
     atomic64_set(&timeline->seqno, 0);
     timeline->os = Os;
@@ -349,7 +349,10 @@ struct dma_fence * viv_fence_create(struct viv_sync_timeline *timeline,
 
     if (!signal->done) {
         signal->fence = (struct dma_fence*)fence;
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,9,68)
         dma_fence_get((struct dma_fence*)fence);
+#endif
     }
 
     spin_unlock(&signal->lock);
@@ -363,11 +366,13 @@ struct dma_fence * viv_fence_create(struct viv_sync_timeline *timeline,
         fence->signal = NULL;
 
         dma_fence_signal_locked((struct dma_fence*)fence);
+        dma_fence_put((struct dma_fence*)fence);
+        fence = NULL;
     }
 
     return (struct dma_fence*)fence;
 }
 
-#endif /* v4.9.0 */
+#endif
 
 #endif

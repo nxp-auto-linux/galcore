@@ -242,6 +242,9 @@ typedef enum _gceHAL_COMMAND_CODES
     /* Wait until GPU finishes access to a resource. */
     gcvHAL_WAIT_FENCE,
 
+    /* Mutex Operation. */
+    gcvHAL_DEVICE_MUTEX,
+
 #if gcdDEC_ENABLE_AHB
     gcvHAL_DEC300_READ,
     gcvHAL_DEC300_WRITE,
@@ -287,6 +290,15 @@ typedef struct _gcsUSER_MEMORY_DESC
     gcsEXTERNAL_MEMORY_INFO    externalMemoryInfo;
 }
 gcsUSER_MEMORY_DESC;
+
+
+enum
+{
+    /* GPU can't issue more that 32bit physical address */
+    gcvPLATFORM_FLAG_LIMIT_4G_ADDRESS = 1 << 0,
+
+    gcvPLATFORM_FLAG_IMX_MM           = 1 << 1,
+};
 
 
 #define gcdMAX_FLAT_MAPPING_COUNT           16
@@ -370,6 +382,8 @@ typedef struct _gcsHAL_QUERY_CHIP_IDENTITY
 
     /* Customer ID. */
     gctUINT32                   customerID;
+
+    gctUINT32                   platformFlagBits;
 }
 gcsHAL_QUERY_CHIP_IDENTITY;
 
@@ -415,6 +429,9 @@ typedef struct _gcsHAL_INTERFACE
 
     /* Ignore information from TSL when doing IO control */
     gctBOOL                     ignoreTLS;
+
+    /* The mutext already acquired */
+    IN gctBOOL                  commitMutex;
 
     /* Union of command structures. */
     union _u
@@ -1247,7 +1264,7 @@ typedef struct _gcsHAL_INTERFACE
             IN gctUINT64                shBuf;
 
             /* A signal. */
-            IN gctUINT32                signal;
+            IN gctUINT64                signal;
 
             OUT gctINT32                fd;
         }
@@ -1360,6 +1377,14 @@ typedef struct _gcsHAL_INTERFACE
             IN gceSURF_TYPE             type;
         }
         BottomHalfUnlockVideoMemory;
+
+        /* gcvHAL_DEVICE_MUTEX: */
+        struct _gcsHAL_DEVICE_MUTEX
+        {
+            /* Lock or Release device mutex. */
+            gctBOOL                     isMutexLocked;
+        }
+        DeviceMutex;
 
         gcsHAL_QUERY_CHIP_OPTIONS QueryChipOptions;
     }

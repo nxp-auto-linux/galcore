@@ -3,6 +3,7 @@
 *    The MIT License (MIT)
 *
 *    Copyright (c) 2014 - 2018 Vivante Corporation
+*    Copyright 2019 NXP
 *
 *    Permission is hereby granted, free of charge, to any person obtaining a
 *    copy of this software and associated documentation files (the "Software"),
@@ -27,6 +28,7 @@
 *    The GPL License (GPL)
 *
 *    Copyright (C) 2014 - 2018 Vivante Corporation
+*    Copyright 2019 NXP
 *
 *    This program is free software; you can redistribute it and/or
 *    modify it under the terms of the GNU General Public License
@@ -308,7 +310,7 @@ static struct notifier_block thermal_hot_pm_notifier =
 
 static ssize_t gpu3DMinClock_show(struct device_driver *dev, char *buf)
 {
-    gctUINT currentf,minf,maxf;
+    gctUINT currentf = 0, minf = 0, maxf = 0;
     gckGALDEVICE galDevice;
 
     galDevice = platform_get_drvdata(pdevice);
@@ -345,8 +347,11 @@ static ssize_t gpu3DMinClock_store(struct device_driver *dev, const char *buf, s
 
     return count;
 }
-
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0)
 static DRIVER_ATTR_RW(gpu3DMinClock);
+#else
+static DRIVER_ATTR(gpu3DMinClock, S_IRUGO | S_IWUSR, gpu3DMinClock_show, gpu3DMinClock_store);
+#endif
 #endif
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,5,0)
@@ -431,24 +436,31 @@ static ssize_t gpu_govern_show(struct device_driver *dev, char *buf)
     struct imx_priv *priv = &imxPriv;
     int i;
     ssize_t len;
+    int max_modes;
 
     unsigned long core_freq;
     unsigned long shader_freq;
 
+    if (priv->imx_gpu_govern.num_modes == GOVERN_COUNT)
+	    max_modes = priv->imx_gpu_govern.num_modes - 1;
+    else
+	    max_modes = priv->imx_gpu_govern.num_modes;
+
     len = sprintf(buf, "GPU support %d modes\n", priv->imx_gpu_govern.num_modes);
 
-    for (i = 0; i < priv->imx_gpu_govern.num_modes; i++)
-    {
-        core_freq   = priv->imx_gpu_govern.core_clk_freq[i];
-        shader_freq = priv->imx_gpu_govern.shader_clk_freq[i];
 
-        len += sprintf(buf + len,
-            "%s:\tcore_clk frequency: %lu\tshader_clk frequency: %lu\n",
-            govern_modes[i], core_freq, shader_freq);
+    for (i = priv->imx_gpu_govern.current_mode; i <= max_modes; i++)
+    {
+	    core_freq   = priv->imx_gpu_govern.core_clk_freq[i];
+	    shader_freq = priv->imx_gpu_govern.shader_clk_freq[i];
+
+	    len += sprintf(buf + len,
+			    "%s:\tcore_clk frequency: %lu\tshader_clk frequency: %lu\n",
+			    govern_modes[i], core_freq, shader_freq);
     }
 
     len += sprintf(buf + len, "Currently GPU runs on mode %s\n",
-        govern_modes[priv->imx_gpu_govern.current_mode]);
+		    govern_modes[priv->imx_gpu_govern.current_mode]);
 
     return len;
 }
@@ -493,9 +505,11 @@ static ssize_t gpu_govern_store(struct device_driver *dev, const char *buf, size
 
     return count;
 }
-
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0)
 static DRIVER_ATTR_RW(gpu_govern);
-
+#else
+static DRIVER_ATTR(gpu_govern, S_IRUGO | S_IWUSR, gpu_govern_show, gpu_govern_store);
+#endif
 
 int init_gpu_opp_table(struct device *dev)
 {
@@ -503,16 +517,20 @@ int init_gpu_opp_table(struct device *dev)
     const __be32 *val;
     int nr;
     int ret = 0;
-    int i;
+    int i, p;
+    int core = gcvCORE_MAJOR;
     struct imx_priv *priv = &imxPriv;
 
+    struct clk *clk_core;
+    struct clk *clk_shader;
+
+    unsigned long core_freq, shader_freq;
+
     priv->imx_gpu_govern.num_modes = 0;
-    priv->imx_gpu_govern.current_mode = OVERDRIVE;
 
     prop = of_find_property(dev->of_node, "operating-points", NULL);
     if (!prop) {
-	dev_err(dev, "operating-points missing. Frequency scaling will not work\n");
-        return -ENODEV;
+        return 0;
     }
 
     if (!prop->value) {
@@ -530,9 +548,23 @@ int init_gpu_opp_table(struct device *dev)
         return -EINVAL;
     }
 
+    /*
+     * We handle both cases where UNDERDRIVE is represented by a single tuple
+     * or when it is represented by two. More than 4 tuples means that we have
+     * the current mode defaulting to OVERDRIVE, while less than 3 means only
+     * nominal. Lastly just two tuples means UNDERDRIVE. Note that the tuples
+     * are divisible by 2 (X Y) hence there's no need to test for odd values.
+     */
+    if (nr < 6)
+	    priv->imx_gpu_govern.current_mode = UNDERDRIVE;
+    else if (nr == 6 || nr == 8)
+	    priv->imx_gpu_govern.current_mode = NOMINAL;
+    else
+	    priv->imx_gpu_govern.current_mode = OVERDRIVE;
+
     val = prop->value;
 
-    for (i = 0; nr > 0 && i < GOVERN_COUNT; nr -= 4)
+    for (p = 0, i = priv->imx_gpu_govern.current_mode; nr > 0 && i < GOVERN_COUNT; nr -= 4)
     {
         unsigned long core_freq, core_volt, shader_freq, shader_volt;
 
@@ -561,17 +593,44 @@ int init_gpu_opp_table(struct device *dev)
         priv->imx_gpu_govern.core_clk_freq[i]   = core_freq;
         priv->imx_gpu_govern.shader_clk_freq[i] = shader_freq;
 
-        i++;
+        p++;
+	i++;
     }
 
-    priv->imx_gpu_govern.num_modes = i;
+    priv->imx_gpu_govern.num_modes = p;
     priv->imx_gpu_govern.dev = dev;
 
     if (priv->imx_gpu_govern.num_modes > 0)
     {
         ret = driver_create_file(dev->driver, &driver_attr_gpu_govern);
-        if (ret)
+        if (ret) {
             dev_err(dev, "create gpu_govern attr failed (%d)\n", ret);
+	    return ret;
+	}
+
+	/*
+	 * This could be redundant, but it is useful for testing DTS with
+	 * different OPPs that have assigned-clock rates different than the
+	 * ones specified in OPP tuple array. Otherwise we will display
+	 * different clock values when the driver is loaded. Further
+	 * modifications of the governor will display correctly but not when
+	 * the driver has been loaded.
+	 */
+	core_freq = priv->imx_gpu_govern.core_clk_freq[priv->imx_gpu_govern.current_mode];
+	shader_freq = priv->imx_gpu_govern.shader_clk_freq[priv->imx_gpu_govern.current_mode];
+
+	if (core_freq && shader_freq) {
+		for (; core <= gcvCORE_3D_MAX; core++) {
+			clk_core = priv->imx_gpu_clks[core].clk_core;
+			clk_shader = priv->imx_gpu_clks[core].clk_shader;
+
+			if (clk_core != NULL && clk_shader != NULL) {
+				clk_set_rate(clk_core, core_freq);
+				clk_set_rate(clk_shader, shader_freq);
+			}
+		}
+	}
+
     }
 
     return ret;
@@ -582,8 +641,18 @@ int remove_gpu_opp_table(void)
     struct imx_priv *priv = &imxPriv;
     struct device* dev = priv->imx_gpu_govern.dev;
     int i = 0;
+    int max_modes;
 
-    for (i = 0; i < priv->imx_gpu_govern.num_modes; i++)
+    if (priv->imx_gpu_govern.num_modes == GOVERN_COUNT)
+	    max_modes = priv->imx_gpu_govern.num_modes - 1;
+    else
+	    max_modes = priv->imx_gpu_govern.num_modes;
+
+    /* if we don't have any modes available we don't have OPP */
+    if (max_modes == 0)
+	    return 0;
+
+    for (i = priv->imx_gpu_govern.current_mode; i <= max_modes; i++)
     {
         unsigned long core_freq;
 
@@ -886,6 +955,18 @@ static int patch_param(struct platform_device *pdev,
 #endif
         patch_param_imx6(pdev, args);
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,5,0)
+    if(args->compression == -1)
+    {
+        const u32 *property;
+        args->compression = gcvCOMPRESSION_OPTION_DEFAULT;
+        property = of_get_property(pdev->dev.of_node, "depth-compression", NULL);
+        if (property && *property == 0)
+        {
+            args->compression &= ~gcvCOMPRESSION_OPTION_DEPTH;
+        }
+    }
+#endif
     res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "phys_baseaddr");
 
     if (res && !args->baseAddress && !args->physSize) {
@@ -1430,6 +1511,17 @@ _AdjustParam(
     )
 {
     patch_param(Platform->device, Args);
+
+    if (of_find_compatible_node(NULL, NULL, "fsl,imx8mq-gpu") &&
+        ((Args->baseAddress + totalram_pages * PAGE_SIZE) > 0x100000000))
+    {
+        Platform->flagBits |= gcvPLATFORM_FLAG_LIMIT_4G_ADDRESS;
+    }
+
+    if (of_find_compatible_node(NULL, NULL, "fsl,imx8mm-gpu"))
+    {
+        Platform->flagBits |= gcvPLATFORM_FLAG_IMX_MM;
+    }
     return gcvSTATUS_OK;
 }
 
@@ -1521,11 +1613,11 @@ int soc_platform_init(struct platform_driver *pdrv,
 #ifdef IMX_GPU_SUBSYSTEM
     if (of_find_compatible_node(NULL, NULL, "fsl,imx8-gpu-ss")) {
         use_imx_gpu_subsystem = 1;
-    }
 
-    if (of_find_compatible_node(NULL, NULL, "fsl,imx8x-gpu")) {
-        printk(KERN_ERR "Incorrect device-tree, please update dtb.");
-        return -EINVAL;
+        if (!of_find_compatible_node(NULL, NULL, "fsl,imx8-gpu")) {
+            printk(KERN_ERR "Incorrect device-tree, please update dtb.");
+            return -EINVAL;
+        }
     }
 #endif
 

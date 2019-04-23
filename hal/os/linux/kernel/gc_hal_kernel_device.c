@@ -70,10 +70,6 @@ static gckGALDEVICE galDevice;
 
 extern gcTA globalTA[16];
 
-gceSTATUS
-gckGALDEVICE_QueryFrequency( IN gckGALDEVICE Device);
-
-
 /******************************************************************************\
 ******************************** Debugfs Support *******************************
 \******************************************************************************/
@@ -91,6 +87,9 @@ int gc_info_show(struct seq_file* m, void* data)
     gctUINT32 chipRevision;
     gctUINT32 productID = 0;
     gctUINT32 ecoID = 0;
+
+    if (!device)
+        return -ENXIO;
 
     for (i = 0; i < gcdMAX_GPU_COUNT; i++)
     {
@@ -133,6 +132,9 @@ int gc_clients_show(struct seq_file* m, void* data)
     gcsDATABASE_PTR database;
     gctINT i, pid;
     char name[24];
+
+    if (!kernel)
+        return -ENXIO;
 
     seq_printf(m, "%-8s%s\n", "PID", "NAME");
     seq_printf(m, "------------------------\n");
@@ -200,6 +202,9 @@ int gc_meminfo_show(struct seq_file* m, void* data)
     gcsDATABASE_COUNTERS contiguousCounter = {0, 0, 0};
     gcsDATABASE_COUNTERS virtualCounter = {0, 0, 0};
     gcsDATABASE_COUNTERS nonPagedCounter = {0, 0, 0};
+
+    if (!kernel)
+        return -ENXIO;
 
     status = gckKERNEL_GetVideoMemoryPool(kernel, gcvPOOL_SYSTEM, &memory);
 
@@ -492,6 +497,10 @@ gc_db_show(struct seq_file *m, void *data)
     gcsINFO_NODE *node = m->private;
     gckGALDEVICE device = node->device;
     gckKERNEL kernel = _GetValidKernel(device);
+
+    if (!kernel)
+        return -ENXIO;
+
     _ShowProcesses(m, kernel);
     return 0 ;
 }
@@ -501,7 +510,15 @@ gc_version_show(struct seq_file *m, void *data)
 {
     gcsINFO_NODE *node = m->private;
     gckGALDEVICE device = node->device;
-    gcsPLATFORM * platform = device->platform;
+    gcsPLATFORM * platform = gcvNULL;
+
+    if (!device)
+        return -ENXIO;
+
+    platform = device->platform;
+
+    if (!platform)
+        return -ENXIO;
 
     seq_printf(m, "%s built at %s\n",  gcvVERSION_STRING, HOST);
 
@@ -544,6 +561,9 @@ gc_idle_show(struct seq_file *m, void *data)
     gctUINT64 off;
     gctUINT64 idle;
     gctUINT64 suspend;
+
+    if (!kernel)
+        return -ENXIO;
 
     gckHARDWARE_QueryStateTimer(kernel->hardware, &start, &end, &on, &off, &idle, &suspend);
 
@@ -592,6 +612,10 @@ gc_dump_trigger_show(struct seq_file *m, void *data)
     {
         kernel = device->kernels[dumpCore];
     }
+
+    if (!kernel)
+        return -ENXIO;
+
 #endif
 
     seq_printf(m, gcdDEBUG_FS_WARN);
@@ -621,6 +645,9 @@ static int gc_vidmem_show(struct seq_file *m, void *unused)
     int i;
 
     gckKERNEL kernel = _GetValidKernel(device);
+
+    if (!kernel)
+        return -ENXIO;
 
     if (dumpProcess == 0)
     {
@@ -701,8 +728,7 @@ static int gc_clk_show(struct seq_file* m, void* data)
     gcsINFO_NODE *node = m->private;
     gckGALDEVICE device = node->device;
     gctUINT i;
-
-    gckGALDEVICE_QueryFrequency(device);
+    gceSTATUS status;
 
     for (i = gcvCORE_MAJOR; i < gcvCORE_COUNT; i++)
     {
@@ -716,6 +742,13 @@ static int gc_clk_show(struct seq_file* m, void* data)
                 continue;
             }
 #endif
+
+            status = gckHARDWARE_QueryFrequency(hardware);
+            if (gcmIS_ERROR(status))
+            {
+                seq_printf(m, "query gpu%d clock fail.\n", i);
+                continue;
+            }
 
             if (hardware->mcClk)
             {
@@ -1210,23 +1243,6 @@ gckGALDEVICE_Construct(
         device->irqLines[i] = -1;
     }
 
-    gcmkONERROR(_DebugfsInit(device));
-
-    if (gckDEBUGFS_CreateNode(
-            device, LogFileSize, device->debugfsDir.root ,DEBUG_FILE, &(device->dbgNode)))
-    {
-        gcmkTRACE_ZONE(
-            gcvLEVEL_ERROR, gcvZONE_DRIVER,
-            "%s(%d): Failed to create  the debug file system  %s/%s \n",
-            __FUNCTION__, __LINE__,
-            PARENT_FILE, DEBUG_FILE
-        );
-    }
-    else if (LogFileSize)
-    {
-        gckDEBUGFS_SetCurrentNode(device->dbgNode);
-    }
-
     _SetupRegisterPhysical(device, Args);
 
     if (IrqLine != -1)
@@ -1583,6 +1599,23 @@ gckGALDEVICE_Construct(
 
     /* Return pointer to the device. */
     *Device = galDevice = device;
+
+    gcmkONERROR(_DebugfsInit(device));
+
+    if (gckDEBUGFS_CreateNode(
+            device, LogFileSize, device->debugfsDir.root ,DEBUG_FILE, &(device->dbgNode)))
+    {
+        gcmkTRACE_ZONE(
+            gcvLEVEL_ERROR, gcvZONE_DRIVER,
+            "%s(%d): Failed to create  the debug file system  %s/%s \n",
+            __FUNCTION__, __LINE__,
+            PARENT_FILE, DEBUG_FILE
+        );
+    }
+    else if (LogFileSize)
+    {
+        gckDEBUGFS_SetCurrentNode(device->dbgNode);
+    }
 
     gcmkFOOTER_ARG("*Device=0x%x", * Device);
     return gcvSTATUS_OK;
@@ -2097,89 +2130,6 @@ gckGALDEVICE_Stop_Threads(
     return gcvSTATUS_OK;
 }
 
-gceSTATUS
-gckGALDEVICE_QueryFrequency(
-    IN gckGALDEVICE Device
-    )
-{
-    gctUINT64 mcStart[gcvCORE_COUNT], shStart[gcvCORE_COUNT];
-    gctUINT32 mcClk[gcvCORE_COUNT], shClk[gcvCORE_COUNT];
-    gckHARDWARE hardware = gcvNULL;
-    gceSTATUS status;
-    gctUINT i;
-
-    gcmkHEADER_ARG("Device=0x%p", Device);
-
-    for (i = gcvCORE_MAJOR; i < gcvCORE_COUNT; i++)
-    {
-#if gcdENABLE_VG
-        if (i == gcvCORE_VG)
-        {
-            continue;
-        }
-#endif
-
-        if (Device->kernels[i])
-        {
-            hardware = Device->kernels[i]->hardware;
-
-            mcStart[i] = shStart[i] = 0;
-
-            if (Device->args.powerManagement)
-            {
-                gcmkONERROR(gckHARDWARE_SetPowerManagement(
-                    hardware, gcvFALSE
-                    ));
-            }
-
-            gcmkONERROR(gckHARDWARE_SetPowerManagementState(
-                hardware, gcvPOWER_ON_AUTO
-                ));
-
-            gckHARDWARE_EnterQueryClock(hardware,
-                                        &mcStart[i], &shStart[i]);
-        }
-    }
-
-    gcmkONERROR(gckOS_Delay(Device->os, 50));
-
-    for (i = gcvCORE_MAJOR; i < gcvCORE_COUNT; i++)
-    {
-        mcClk[i] = shClk[i] = 0;
-
-#if gcdENABLE_VG
-        if (i == gcvCORE_VG)
-        {
-            continue;
-        }
-#endif
-
-        if (Device->kernels[i] && mcStart[i])
-        {
-            hardware = Device->kernels[i]->hardware;
-
-            if (Device->args.powerManagement)
-            {
-                gcmkONERROR(gckHARDWARE_SetPowerManagement(
-                    hardware, gcvTRUE
-                    ));
-            }
-
-            gckHARDWARE_ExitQueryClock(hardware,
-                                       mcStart[i], shStart[i],
-                                       &mcClk[i], &shClk[i]);
-
-            hardware->mcClk = mcClk[i];
-            hardware->shClk = shClk[i];
-        }
-    }
-
-OnError:
-    gcmkFOOTER_NO();
-
-    return status;
-}
-
 /*******************************************************************************
 **
 **  gckGALDEVICE_Start
@@ -2213,8 +2163,6 @@ gckGALDEVICE_Start(
 
     /* Start the kernel thread. */
     gcmkONERROR(gckGALDEVICE_Start_Threads(Device));
-
-    gcmkONERROR(gckGALDEVICE_QueryFrequency(Device));
 
     for (i = 0; i < gcvCORE_COUNT; i++)
     {
