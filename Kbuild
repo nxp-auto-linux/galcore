@@ -2,7 +2,7 @@
 #
 #    The MIT License (MIT)
 #
-#    Copyright (c) 2014 - 2018 Vivante Corporation
+#    Copyright (c) 2014 - 2019 Vivante Corporation
 #
 #    Permission is hereby granted, free of charge, to any person obtaining a
 #    copy of this software and associated documentation files (the "Software"),
@@ -26,7 +26,7 @@
 #
 #    The GPL License (GPL)
 #
-#    Copyright (C) 2014 - 2018 Vivante Corporation
+#    Copyright (C) 2014 - 2019 Vivante Corporation
 #
 #    This program is free software; you can redistribute it and/or
 #    modify it under the terms of the GNU General Public License
@@ -107,7 +107,6 @@ endif
 
 OBJS += $(HAL_KERNEL_DIR)/gc_hal_kernel.o \
         $(HAL_KERNEL_DIR)/gc_hal_kernel_command.o \
-        $(HAL_KERNEL_DIR)/gc_hal_kernel_async_command.o \
         $(HAL_KERNEL_DIR)/gc_hal_kernel_db.o \
         $(HAL_KERNEL_DIR)/gc_hal_kernel_debug.o \
         $(HAL_KERNEL_DIR)/gc_hal_kernel_event.o \
@@ -118,7 +117,10 @@ OBJS += $(HAL_KERNEL_DIR)/gc_hal_kernel.o \
         $(HAL_KERNEL_DIR)/gc_hal_kernel_security_v1.o
 
 OBJS += $(ARCH_KERNEL_DIR)/gc_hal_kernel_context.o \
-        $(ARCH_KERNEL_DIR)/gc_hal_kernel_hardware.o
+        $(ARCH_KERNEL_DIR)/gc_hal_kernel_hardware.o \
+        $(ARCH_KERNEL_DIR)/gc_hal_kernel_hardware_async_fe.o \
+        $(ARCH_KERNEL_DIR)/gc_hal_kernel_hardware_mc_fe.o \
+        $(ARCH_KERNEL_DIR)/gc_hal_kernel_hardware_waitlink_fe.o
 
 ifeq ($(VIVANTE_ENABLE_3D), 1)
 OBJS += $(ARCH_KERNEL_DIR)/gc_hal_kernel_recorder.o
@@ -315,7 +317,7 @@ EXTRA_CFLAGS += -I$(AQROOT)/hal/kernel/archvg
 endif
 
 ifeq ($(VIVANTE_ENABLE_DRM), 1)
-EXTRA_CFLAGS += -I$(AQROOT)/driver/X/libdrm-2.4.66/include/drm
+EXTRA_CFLAGS += -I$(AQROOT)/driver/X/libdrm-2.4.91/include/drm
 endif
 
 EXTRA_CFLAGS += -DHOST=\"$(HOST)\"
